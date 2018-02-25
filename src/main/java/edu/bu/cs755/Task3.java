@@ -35,7 +35,7 @@ public class Task3 {
                 DoubleWritable fare = new DoubleWritable(Double.parseDouble(fields[16]));
 
                 // Set up the map which will be output by this map
-                MapWritable moneyMinutes= new MapWritable();
+                MapWritable moneyMinutes = new MapWritable();
 
                 // Assign the fare and minutes to the map with the keys 1 and 2
                 moneyMinutes.put(one, minutes);
@@ -65,12 +65,13 @@ public class Task3 {
             }
 
             // troubleshooting
+            /*
             System.out.println("---" + key + "---\n");
             System.out.println(minutes + "\n");
             System.out.println(fare + "\n");
             System.out.println(fare/minutes + "\n");
             System.out.println("--- END END END --- \n");
-
+            */
 
             // Set the result to the sum of all the fares divided by the sum of all of the minutes
             result.set(fare/minutes);
