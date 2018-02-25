@@ -3,6 +3,8 @@ package edu.bu.cs755;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -12,11 +14,12 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 import java.io.IOException;
 
-// Successfully returns the money-per-minute of all cab rides in data set
 public class Task3 {
+    //these will be used for the keys in the map produced by this result
+    private final static IntWritable one = new IntWritable(1);
+    private final static IntWritable two = new IntWritable(2);
 
-    public static class GetTripPrice extends Mapper<Object, Text, Text, DoubleWritable>{
-
+    public static class GetTripPrice extends Mapper<Object, Text, Text, MapWritable>{
         public void map(Object key, Text value, Context context
         ) throws IOException, InterruptedException {
             // set the input string
@@ -25,63 +28,63 @@ public class Task3 {
             String[] fields = line.split(",");
             // only process records with exactly 17 fields, the seconds and the fare are greater than 0, thus discarding some malformed records
             if  (fields.length == 17 && Double.parseDouble(fields[16]) > 0 && Double.parseDouble(fields[4]) > 0) {
-                // get the total fare for the current ride
-                Double fare = Double.parseDouble(fields[16]);
-                // get the number of minutes of the current ride
-                Double minutes = (Double.parseDouble(fields[4])/60);
-                // create the var for output, and set to the dollars per minute for this ride
-                DoubleWritable moneyPerMinute = new DoubleWritable();
-                moneyPerMinute.set(fare/minutes);
 
-                //troubleshooting
-                /*
-                System.out.println("FARE: " + fare);
-                System.out.println("Minutes: " + minutes);
-                System.out.println("moneyPerMinute: " + moneyPerMinute);
-                */
+                // Assign the medallion, fare and minutes for this ride to writable types
+                Text medallion = new Text(fields[0]);
+                DoubleWritable minutes = new DoubleWritable(Double.parseDouble(fields[4])/60);
+                DoubleWritable fare = new DoubleWritable(Double.parseDouble(fields[16]));
 
-                // write to the context the medallion number and money per minute for this ride
-                context.write(new Text(fields[0]), moneyPerMinute);
+                // Set up the map which will be output by this map
+                MapWritable moneyMinutes= new MapWritable();
+
+                // Assign the fare and minutes to the map with the keys 1 and 2
+                moneyMinutes.put(one, minutes);
+                moneyMinutes.put(two,fare);
+
+                // write to the context the medallion number and the money, minutes map
+                context.write(medallion, moneyMinutes);
             }
         }
     }
 
-    public static class SumFaresPerMinute extends Reducer<Text,DoubleWritable,Text,DoubleWritable> {
+    public static class SumFaresPerMinute extends Reducer<Text,MapWritable,Text,DoubleWritable> {
         private DoubleWritable result = new DoubleWritable();
-        public void reduce(Text key, Iterable<DoubleWritable> values,
+        public void reduce(Text key, Iterable<MapWritable> values,
                            Context context
         ) throws IOException, InterruptedException {
-            // the total ride for this medallion number
-            double totalRides = 0;
-            // the total money per minute for this medallion number
-            double moneyPerMinute = 0;
-            for (DoubleWritable val : values) {
-                // increment the total rides
-                totalRides += 1;
-                // add to the total money per minute
-                moneyPerMinute += val.get();
-            }
-            // troubleshooting
-            /*
-            System.out.println("Total Rides:" + totalRides);
-            System.out.println("Money Per Minute: " + moneyPerMinute);
-            */
 
-            // set the result to the money per minute total divided by the trips total, which is the average money per minute
-            result.set(moneyPerMinute/totalRides);
-            //write to the context the medallion number and money per minute for this ride
+            // use these to keep a running count of total minutes and fare for this cab
+            double minutes = 0;
+            double fare = 0;
+
+            for (MapWritable val : values) {
+                // add the minutes for this ride to the minutes total
+                minutes += ((DoubleWritable) val.get(one)).get();
+                // add the fare for this ride to the fare total
+                fare += ((DoubleWritable) val.get(two)).get();
+            }
+
+            // troubleshooting
+            System.out.println("---" + key + "---\n");
+            System.out.println(minutes + "\n");
+            System.out.println(fare + "\n");
+            System.out.println(fare/minutes + "\n");
+            System.out.println("--- END END END --- \n");
+
+
+            // Set the result to the sum of all the fares divided by the sum of all of the minutes
+            result.set(fare/minutes);
+            //write to the context the medallion number and money per minute for this cab
             context.write(key, result);
         }
     }
-
-
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
         Job job =  new Job(conf, "task3");
         job.setJarByClass(Task3.class);
         job.setMapOutputKeyClass(Text.class);
-        job.setMapOutputValueClass(DoubleWritable.class);
+        job.setMapOutputValueClass(MapWritable.class);
         job.setMapperClass(GetTripPrice.class);
         //job.setCombinerClass(SumFaresPerMinute.class);
         job.setReducerClass(SumFaresPerMinute.class);
